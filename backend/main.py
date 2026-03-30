@@ -1,22 +1,12 @@
-from fastapi import FastAPI, HTTPException, Security
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.security import APIKeyHeader
 from pydantic import BaseModel
 from openai import OpenAI
 import psutil, os, datetime
 
 app = FastAPI(title="Infra Insight API")
 
-# --- API Key auth ---
-APP_API_KEY = os.environ["APP_API_KEY"]
-api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
-
-async def verify_api_key(key: str = Security(api_key_header)):
-    if key != APP_API_KEY:
-        raise HTTPException(status_code=403, detail="Forbidden")
-
-# --- CORS ---
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["https://infra.istvanszechenyi.uk"],
@@ -37,7 +27,7 @@ class AnalyzeRequest(BaseModel):
     metrics: dict
     question: str = "Elemezd a szerver allapotat es jelezd ha beavatkozas szukseges."
 
-@app.get("/api/metrics", dependencies=[Security(verify_api_key)])
+@app.get("/api/metrics")
 async def get_metrics():
     cpu = psutil.cpu_percent(interval=1)
     mem = psutil.virtual_memory()
@@ -65,7 +55,7 @@ async def get_metrics():
         "uptime": uptime,
     }
 
-@app.post("/api/analyze", dependencies=[Security(verify_api_key)])
+@app.post("/api/analyze")
 async def analyze(req: AnalyzeRequest):
     metrics_str = "\n".join(f"- {k}: {v}" for k, v in req.metrics.items())
     prompt = f"Szerver metrikak:\n{metrics_str}\n\nKerdes: {req.question}"
