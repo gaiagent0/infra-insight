@@ -81,4 +81,4 @@ async def health():
     return {"status": "ok"}
 
 
-app.mount("/", StaticFiles(directory="../frontend/dist", html=True), name="frontend")
+app.mount("/", StaticFiles(directory="../frontend", html=True), name="frontend")

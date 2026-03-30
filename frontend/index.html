@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="hu">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Infra Insight — AI DevOps Dashboard</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{font-family:'Segoe UI',system-ui,sans-serif;background:#0f1117;color:#e2e8f0;min-height:100vh}
+    header{background:#161b27;border-bottom:1px solid #2d3748;padding:1rem 2rem;display:flex;align-items:center;gap:1rem}
+    header h1{font-size:1.2rem;font-weight:700;color:#63b3ed}
+    .badge{background:#1a365d;color:#63b3ed;font-size:.7rem;padding:.2rem .6rem;border-radius:99px}
+    main{padding:2rem;max-width:1200px;margin:0 auto}
+    .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:1rem;margin-bottom:2rem}
+    .card{background:#161b27;border:1px solid #2d3748;border-radius:12px;padding:1.25rem}
+    .card h3{font-size:.75rem;color:#718096;text-transform:uppercase;letter-spacing:.05em;margin-bottom:.5rem}
+    .card .val{font-size:2rem;font-weight:700}
+    .card .sub{font-size:.8rem;color:#718096;margin-top:.25rem}
+    .bar{height:6px;background:#2d3748;border-radius:3px;margin-top:.75rem;overflow:hidden}
+    .bar-fill{height:100%;border-radius:3px;transition:width .5s}
+    .ok{background:#48bb78}.warn{background:#ed8936}.crit{background:#f56565}
+    .charts{display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-bottom:2rem}
+    .chart-card{background:#161b27;border:1px solid #2d3748;border-radius:12px;padding:1.25rem}
+    .chart-card h3{font-size:.8rem;color:#718096;margin-bottom:1rem}
+    .ai-panel{background:#161b27;border:1px solid #2d3748;border-radius:12px;padding:1.5rem}
+    .ai-panel h2{font-size:1rem;font-weight:600;color:#63b3ed;margin-bottom:1rem}
+    .ai-output{background:#0f1117;border-radius:8px;padding:1rem;min-height:80px;font-size:.9rem;line-height:1.6;white-space:pre-wrap;margin-bottom:1rem;color:#a0aec0}
+    .ai-row{display:flex;gap:.75rem}
+    .ai-input{flex:1;background:#0f1117;border:1px solid #2d3748;border-radius:8px;padding:.65rem 1rem;color:#e2e8f0;font-size:.9rem;outline:none;font-family:inherit}
+    .ai-input:focus{border-color:#63b3ed}
+    .ai-btn{background:#2b6cb0;color:#fff;border:none;border-radius:8px;padding:0 1.25rem;cursor:pointer;font-size:.9rem}
+    .ai-btn:hover{background:#2c5282}
+    .ai-btn:disabled{background:#2d3748;cursor:not-allowed}
+    .refresh-btn{margin-left:auto;background:#2d3748;color:#a0aec0;border:none;border-radius:6px;padding:.4rem .9rem;cursor:pointer;font-size:.8rem}
+    .dot{width:8px;height:8px;border-radius:50%;background:#48bb78;display:inline-block;margin-right:.5rem;animation:pulse 2s infinite}
+    @keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+    @media(max-width:700px){.charts{grid-template-columns:1fr}}
+  </style>
+</head>
+<body>
+<header>
+  <span>📊</span>
+  <h1>Infra Insight</h1>
+  <span class="badge">AI DevOps Dashboard</span>
+  <button class="refresh-btn" onclick="loadMetrics()">⟳ Frissítés</button>
+</header>
+<main>
+  <div class="grid">
+    <div class="card">
+      <h3>CPU</h3>
+      <div class="val" id="cpu-val">—</div>
+      <div class="sub" id="cpu-sub">—</div>
+      <div class="bar"><div class="bar-fill ok" id="cpu-bar" style="width:0%"></div></div>
+    </div>
+    <div class="card">
+      <h3>Memória</h3>
+      <div class="val" id="mem-val">—</div>
+      <div class="sub" id="mem-sub">—</div>
+      <div class="bar"><div class="bar-fill ok" id="mem-bar" style="width:0%"></div></div>
+    </div>
+    <div class="card">
+      <h3>Disk</h3>
+      <div class="val" id="disk-val">—</div>
+      <div class="sub" id="disk-sub">—</div>
+      <div class="bar"><div class="bar-fill ok" id="disk-bar" style="width:0%"></div></div>
+    </div>
+    <div class="card">
+      <h3>Uptime</h3>
+      <div class="val" id="uptime-val" style="font-size:1.3rem">—</div>
+      <div class="sub"><span class="dot"></span>Online</div>
+    </div>
+  </div>
+  <div class="charts">
+    <div class="chart-card">
+      <h3>CPU történet</h3>
+      <canvas id="cpuChart" height="120"></canvas>
+    </div>
+    <div class="chart-card">
+      <h3>Memória történet</h3>
+      <canvas id="memChart" height="120"></canvas>
+    </div>
+  </div>
+  <div class="ai-panel">
+    <h2>🤖 AI Elemzés</h2>
+    <div class="ai-output" id="ai-out">Kattints az Elemzés gombra...</div>
+    <div class="ai-row">
+      <input class="ai-input" id="ai-q" type="text" value="Elemezd a szerver jelenlegi állapotát.">
+      <button class="ai-btn" id="ai-btn" onclick="analyze()">🔍 Elemzés</button>
+    </div>
+  </div>
+</main>
+<script>
+const cpuH=[],memH=[],lbls=[];
+const cfg=(color,data)=>({type:'line',data:{labels:lbls,datasets:[{data,borderColor:color,backgroundColor:color+'22',tension:.4,fill:true,pointRadius:2}]},options:{animation:false,scales:{y:{min:0,max:100,ticks:{color:'#718096'},grid:{color:'#2d3748'}},x:{ticks:{display:false},grid:{color:'#2d3748'}}},plugins:{legend:{display:false}}}});
+const cpuChart=new Chart(document.getElementById('cpuChart'),cfg('#63b3ed',cpuH));
+const memChart=new Chart(document.getElementById('memChart'),cfg('#68d391',memH));
+function cls(p){return p>85?'crit':p>65?'warn':'ok';}
+let last=null;
+async function loadMetrics(){
+  try{
+    const d=await fetch('/api/metrics').then(r=>r.json());
+    last=d;
+    const cpu=d.cpu.percent,mem=d.memory.percent,disk=d.disk.percent;
+    document.getElementById('cpu-val').textContent=cpu+'%';
+    document.getElementById('cpu-sub').textContent=d.cpu.count+' mag';
+    document.getElementById('cpu-bar').style.width=cpu+'%';
+    document.getElementById('cpu-bar').className='bar-fill '+cls(cpu);
+    document.getElementById('mem-val').textContent=mem+'%';
+    document.getElementById('mem-sub').textContent=d.memory.used_gb+' / '+d.memory.total_gb+' GB';
+    document.getElementById('mem-bar').style.width=mem+'%';
+    document.getElementById('mem-bar').className='bar-fill '+cls(mem);
+    document.getElementById('disk-val').textContent=disk+'%';
+    document.getElementById('disk-sub').textContent=d.disk.used_gb+' / '+d.disk.total_gb+' GB';
+    document.getElementById('disk-bar').style.width=disk+'%';
+    document.getElementById('disk-bar').className='bar-fill '+cls(disk);
+    document.getElementById('uptime-val').textContent=d.uptime;
+    const t=new Date().toLocaleTimeString('hu-HU');
+    if(lbls.length>=20){lbls.shift();cpuH.shift();memH.shift();}
+    lbls.push(t);cpuH.push(cpu);memH.push(mem);
+    cpuChart.update();memChart.update();
+  }catch(e){console.error(e);}
+}
+async function analyze(){
+  if(!last)await loadMetrics();
+  const btn=document.getElementById('ai-btn'),out=document.getElementById('ai-out');
+  const q=document.getElementById('ai-q').value.trim()||'Elemezd a szerver állapotát.';
+  btn.disabled=true;out.textContent='Elemzés folyamatban...';
+  try{
+    const d=await fetch('/api/analyze',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({metrics:last,question:q})}).then(r=>r.json());
+    out.textContent=d.analysis||'Nem sikerült elemzést kapni.';
+  }catch(e){out.textContent='Hiba: '+e.message;}
+  btn.disabled=false;
+}
+loadMetrics();
+setInterval(loadMetrics,10000);
+</script>
+</body>
+</html>
