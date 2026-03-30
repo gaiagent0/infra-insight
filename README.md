@@ -35,7 +35,7 @@ User → infra.istvanszechenyi.uk
 
 ```
 OCI AMD VM
-  ├── hu-ai-chat   → port 8000  → chat.istvanszechenyi.uk
+  ├── hu-ai-chat    → port 8000 → chat.istvanszechenyi.uk
   └── infra-insight → port 8001 → infra.istvanszechenyi.uk
 ```
 
@@ -140,8 +140,6 @@ ssh ubuntu@<OCI_VM_IP>
 echo "DASHSCOPE_API_KEY=sk-..." > ~/.env.infra-insight
 
 # 3. Deploy script futtatása
-curl -fsSL https://raw.githubusercontent.com/gaiagent0/infra-insight/main/deploy/setup.sh | bash
-# vagy:
 git clone https://github.com/gaiagent0/infra-insight.git
 bash infra-insight/deploy/setup.sh
 ```
