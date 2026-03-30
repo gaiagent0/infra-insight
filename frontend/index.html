@@ -32,18 +32,44 @@
     .ai-btn{background:#2b6cb0;color:#fff;border:none;border-radius:8px;padding:0 1.25rem;cursor:pointer;font-size:.9rem}
     .ai-btn:hover{background:#2c5282}
     .ai-btn:disabled{background:#2d3748;cursor:not-allowed}
-    .refresh-btn{margin-left:auto;background:#2d3748;color:#a0aec0;border:none;border-radius:6px;padding:.4rem .9rem;cursor:pointer;font-size:.8rem}
+    .refresh-btn{background:#2d3748;color:#a0aec0;border:none;border-radius:6px;padding:.4rem .9rem;cursor:pointer;font-size:.8rem}
+    .key-btn{background:#2d3748;color:#a0aec0;border:none;border-radius:6px;padding:.4rem .9rem;cursor:pointer;font-size:.8rem;margin-left:.5rem}
     .dot{width:8px;height:8px;border-radius:50%;background:#48bb78;display:inline-block;margin-right:.5rem;animation:pulse 2s infinite}
     @keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
     @media(max-width:700px){.charts{grid-template-columns:1fr}}
+
+    /* API key overlay */
+    #key-overlay{position:fixed;inset:0;background:rgba(0,0,0,.75);display:flex;align-items:center;justify-content:center;z-index:100}
+    #key-overlay.hidden{display:none}
+    .key-box{background:#161b27;border:1px solid #2d3748;border-radius:16px;padding:2rem;width:100%;max-width:420px;display:flex;flex-direction:column;gap:1rem}
+    .key-box h2{color:#63b3ed;font-size:1.1rem;font-weight:600}
+    .key-box p{color:#718096;font-size:.85rem;line-height:1.5}
+    .key-box input{background:#0f1117;border:1px solid #2d3748;border-radius:8px;padding:.7rem 1rem;color:#e2e8f0;font-size:.95rem;outline:none;font-family:inherit}
+    .key-box input:focus{border-color:#63b3ed}
+    .key-box button{background:#2b6cb0;color:#fff;border:none;border-radius:8px;padding:.75rem;cursor:pointer;font-size:.95rem;font-weight:600}
+    .key-box button:hover{background:#2c5282}
+    .key-err{color:#f56565;font-size:.82rem;display:none}
   </style>
 </head>
 <body>
+
+<!-- API key belépési overlay -->
+<div id="key-overlay">
+  <div class="key-box">
+    <h2>🔑 API kulcs szükséges</h2>
+    <p>Az Infra Insight API védett. Add meg az <code>APP_API_KEY</code> értékét — a böngésző elmenti, legközelebb nem kell újra begépelni.</p>
+    <input type="password" id="key-input" placeholder="APP_API_KEY értéke..." autocomplete="off">
+    <div class="key-err" id="key-err">Hibás kulcs, próbáld újra.</div>
+    <button onclick="submitKey()">Belépés</button>
+  </div>
+</div>
+
 <header>
   <span>📊</span>
   <h1>Infra Insight</h1>
   <span class="badge">AI DevOps Dashboard</span>
-  <button class="refresh-btn" onclick="loadMetrics()">⟳ Frissítés</button>
+  <button class="refresh-btn" onclick="loadMetrics()" style="margin-left:auto">⟳ Frissítés</button>
+  <button class="key-btn" onclick="resetKey()" title="API kulcs módosítása">🔑</button>
 </header>
 <main>
   <div class="grid">
@@ -91,49 +117,122 @@
   </div>
 </main>
 <script>
-const cpuH=[],memH=[],lbls=[];
-const cfg=(color,data)=>({type:'line',data:{labels:lbls,datasets:[{data,borderColor:color,backgroundColor:color+'22',tension:.4,fill:true,pointRadius:2}]},options:{animation:false,scales:{y:{min:0,max:100,ticks:{color:'#718096'},grid:{color:'#2d3748'}},x:{ticks:{display:false},grid:{color:'#2d3748'}}},plugins:{legend:{display:false}}}});
-const cpuChart=new Chart(document.getElementById('cpuChart'),cfg('#63b3ed',cpuH));
-const memChart=new Chart(document.getElementById('memChart'),cfg('#68d391',memH));
-function cls(p){return p>85?'crit':p>65?'warn':'ok';}
-let last=null;
-async function loadMetrics(){
-  try{
-    const d=await fetch('/api/metrics').then(r=>r.json());
-    last=d;
-    const cpu=d.cpu.percent,mem=d.memory.percent,disk=d.disk.percent;
-    document.getElementById('cpu-val').textContent=cpu+'%';
-    document.getElementById('cpu-sub').textContent=d.cpu.count+' mag';
-    document.getElementById('cpu-bar').style.width=cpu+'%';
-    document.getElementById('cpu-bar').className='bar-fill '+cls(cpu);
-    document.getElementById('mem-val').textContent=mem+'%';
-    document.getElementById('mem-sub').textContent=d.memory.used_gb+' / '+d.memory.total_gb+' GB';
-    document.getElementById('mem-bar').style.width=mem+'%';
-    document.getElementById('mem-bar').className='bar-fill '+cls(mem);
-    document.getElementById('disk-val').textContent=disk+'%';
-    document.getElementById('disk-sub').textContent=d.disk.used_gb+' / '+d.disk.total_gb+' GB';
-    document.getElementById('disk-bar').style.width=disk+'%';
-    document.getElementById('disk-bar').className='bar-fill '+cls(disk);
-    document.getElementById('uptime-val').textContent=d.uptime;
-    const t=new Date().toLocaleTimeString('hu-HU');
-    if(lbls.length>=20){lbls.shift();cpuH.shift();memH.shift();}
-    lbls.push(t);cpuH.push(cpu);memH.push(mem);
-    cpuChart.update();memChart.update();
-  }catch(e){console.error(e);}
+const LS_KEY = 'infra_insight_api_key';
+let API_KEY = localStorage.getItem(LS_KEY) || '';
+
+function authHeaders() {
+  return { 'Content-Type': 'application/json', 'X-API-Key': API_KEY };
 }
-async function analyze(){
-  if(!last)await loadMetrics();
-  const btn=document.getElementById('ai-btn'),out=document.getElementById('ai-out');
+
+function showOverlay(err) {
+  document.getElementById('key-overlay').classList.remove('hidden');
+  document.getElementById('key-err').style.display = err ? 'block' : 'none';
+  document.getElementById('key-input').value = '';
+  setTimeout(() => document.getElementById('key-input').focus(), 50);
+}
+
+function hideOverlay() {
+  document.getElementById('key-overlay').classList.add('hidden');
+}
+
+async function submitKey() {
+  const val = document.getElementById('key-input').value.trim();
+  if (!val) return;
+  API_KEY = val;
+  // Verify with a real call
+  try {
+    const r = await fetch('/api/metrics', { headers: { 'X-API-Key': val } });
+    if (r.status === 403) { showOverlay(true); return; }
+    localStorage.setItem(LS_KEY, val);
+    hideOverlay();
+    initCharts();
+    loadMetrics();
+    setInterval(loadMetrics, 10000);
+  } catch(e) {
+    showOverlay(true);
+  }
+}
+
+function resetKey() {
+  localStorage.removeItem(LS_KEY);
+  API_KEY = '';
+  showOverlay(false);
+}
+
+document.getElementById('key-input').addEventListener('keydown', e => {
+  if (e.key === 'Enter') submitKey();
+});
+
+// Charts
+const cpuH=[], memH=[], lbls=[];
+let cpuChart, memChart;
+const cfg = (color, data) => ({
+  type: 'line',
+  data: { labels: lbls, datasets: [{ data, borderColor: color, backgroundColor: color+'22', tension: .4, fill: true, pointRadius: 2 }] },
+  options: { animation: false, scales: { y: { min:0, max:100, ticks:{color:'#718096'}, grid:{color:'#2d3748'} }, x: { ticks:{display:false}, grid:{color:'#2d3748'} } }, plugins: { legend:{display:false} } }
+});
+
+function initCharts() {
+  cpuChart = new Chart(document.getElementById('cpuChart'), cfg('#63b3ed', cpuH));
+  memChart = new Chart(document.getElementById('memChart'), cfg('#68d391', memH));
+}
+
+function cls(p){ return p>85?'crit':p>65?'warn':'ok'; }
+let last = null;
+
+async function loadMetrics() {
+  try {
+    const r = await fetch('/api/metrics', { headers: { 'X-API-Key': API_KEY } });
+    if (r.status === 403) { showOverlay(false); return; }
+    const d = await r.json();
+    last = d;
+    const cpu=d.cpu.percent, mem=d.memory.percent, disk=d.disk.percent;
+    document.getElementById('cpu-val').textContent = cpu+'%';
+    document.getElementById('cpu-sub').textContent = d.cpu.count+' mag';
+    document.getElementById('cpu-bar').style.width = cpu+'%';
+    document.getElementById('cpu-bar').className = 'bar-fill '+cls(cpu);
+    document.getElementById('mem-val').textContent = mem+'%';
+    document.getElementById('mem-sub').textContent = d.memory.used_gb+' / '+d.memory.total_gb+' GB';
+    document.getElementById('mem-bar').style.width = mem+'%';
+    document.getElementById('mem-bar').className = 'bar-fill '+cls(mem);
+    document.getElementById('disk-val').textContent = disk+'%';
+    document.getElementById('disk-sub').textContent = d.disk.used_gb+' / '+d.disk.total_gb+' GB';
+    document.getElementById('disk-bar').style.width = disk+'%';
+    document.getElementById('disk-bar').className = 'bar-fill '+cls(disk);
+    document.getElementById('uptime-val').textContent = d.uptime;
+    const t = new Date().toLocaleTimeString('hu-HU');
+    if (lbls.length>=20) { lbls.shift(); cpuH.shift(); memH.shift(); }
+    lbls.push(t); cpuH.push(cpu); memH.push(mem);
+    if (cpuChart) { cpuChart.update(); memChart.update(); }
+  } catch(e) { console.error(e); }
+}
+
+async function analyze() {
+  if (!last) await loadMetrics();
+  const btn=document.getElementById('ai-btn'), out=document.getElementById('ai-out');
   const q=document.getElementById('ai-q').value.trim()||'Elemezd a szerver állapotát.';
-  btn.disabled=true;out.textContent='Elemzés folyamatban...';
-  try{
-    const d=await fetch('/api/analyze',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({metrics:last,question:q})}).then(r=>r.json());
-    out.textContent=d.analysis||'Nem sikerült elemzést kapni.';
-  }catch(e){out.textContent='Hiba: '+e.message;}
+  btn.disabled=true; out.textContent='Elemzés folyamatban...';
+  try {
+    const r = await fetch('/api/analyze', {
+      method: 'POST',
+      headers: authHeaders(),
+      body: JSON.stringify({ metrics: last, question: q })
+    });
+    if (r.status === 403) { showOverlay(false); btn.disabled=false; return; }
+    const d = await r.json();
+    out.textContent = d.analysis || 'Nem sikerült elemzést kapni.';
+  } catch(e) { out.textContent='Hiba: '+e.message; }
   btn.disabled=false;
 }
-loadMetrics();
-setInterval(loadMetrics,10000);
+
+// Startup
+if (API_KEY) {
+  initCharts();
+  loadMetrics();
+  setInterval(loadMetrics, 10000);
+} else {
+  showOverlay(false);
+}
 </script>
 </body>
 </html>
