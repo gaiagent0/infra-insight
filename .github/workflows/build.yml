@@ -1,0 +1,35 @@
+name: Build & Push to OCIR
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+env:
+  OCI_REGION: eu-frankfurt-1
+  OCIR_REGISTRY: fra.ocir.io
+jobs:
+  build-push:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Log in to OCIR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.OCIR_REGISTRY }}
+          username: ${{ secrets.OCI_TENANCY_NAMESPACE }}/${{ secrets.OCI_USERNAME }}
+          password: ${{ secrets.OCI_AUTH_TOKEN }}
+      - name: Build and push backend
+        uses: docker/build-push-action@v5
+        with:
+          context: backend
+          push: true
+          tags: |
+            fra.ocir.io/${{ secrets.OCI_TENANCY_NAMESPACE }}/infra-insight-backend:${{ github.sha }}
+            fra.ocir.io/${{ secrets.OCI_TENANCY_NAMESPACE }}/infra-insight-backend:latest
+      - name: Build and push frontend
+        uses: docker/build-push-action@v5
+        with:
+          context: frontend
+          push: true
+          tags: |
+            fra.ocir.io/${{ secrets.OCI_TENANCY_NAMESPACE }}/infra-insight-frontend:${{ github.sha }}
+            fra.ocir.io/${{ secrets.OCI_TENANCY_NAMESPACE }}/infra-insight-frontend:latest
