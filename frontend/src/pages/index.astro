@@ -1,17 +1,157 @@
 ---
-
 ---
+<!DOCTYPE html>
+<html lang="hu">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width" />
+  <title>Infra Insight</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Segoe UI', sans-serif; background: #0f1117; color: #e2e8f0; min-height: 100vh; padding: 2rem; }
+    h1 { font-size: 1.8rem; font-weight: 700; color: #7c3aed; margin-bottom: 0.25rem; }
+    .subtitle { color: #64748b; font-size: 0.9rem; margin-bottom: 2rem; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-bottom: 2rem; }
+    .card { background: #1e2130; border: 1px solid #2d3148; border-radius: 12px; padding: 1.25rem; }
+    .card-label { font-size: 0.75rem; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.5rem; }
+    .card-value { font-size: 2rem; font-weight: 700; color: #e2e8f0; }
+    .card-unit { font-size: 0.85rem; color: #64748b; margin-left: 0.25rem; }
+    .bar-bg { background: #2d3148; border-radius: 99px; height: 6px; margin-top: 0.75rem; }
+    .bar { height: 6px; border-radius: 99px; transition: width 0.5s; }
+    .bar-cpu { background: #7c3aed; }
+    .bar-mem { background: #0ea5e9; }
+    .bar-disk { background: #10b981; }
+    .section { background: #1e2130; border: 1px solid #2d3148; border-radius: 12px; padding: 1.5rem; margin-bottom: 1rem; }
+    .section-title { font-size: 0.85rem; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 1rem; }
+    button { background: #7c3aed; color: white; border: none; border-radius: 8px; padding: 0.75rem 1.5rem; font-size: 0.9rem; cursor: pointer; transition: background 0.2s; }
+    button:hover { background: #6d28d9; }
+    button:disabled { background: #3d3d5c; cursor: not-allowed; }
+    .analysis { background: #13151f; border-radius: 8px; padding: 1rem; margin-top: 1rem; font-size: 0.9rem; line-height: 1.6; color: #cbd5e1; white-space: pre-wrap; min-height: 60px; }
+    .net-row { display: flex; justify-content: space-between; font-size: 0.9rem; padding: 0.4rem 0; border-bottom: 1px solid #2d3148; }
+    .net-row:last-child { border-bottom: none; }
+    .net-label { color: #64748b; }
+    .status-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #10b981; margin-right: 0.5rem; animation: pulse 2s infinite; }
+    @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
+    .uptime { font-size: 0.85rem; color: #64748b; margin-top: 0.5rem; }
+    .refresh-btn { background: #1e2130; border: 1px solid #2d3148; color: #64748b; padding: 0.4rem 0.8rem; font-size: 0.8rem; border-radius: 6px; cursor: pointer; margin-left: 1rem; }
+    .refresh-btn:hover { background: #2d3148; color: #e2e8f0; }
+    .header-row { display: flex; align-items: center; margin-bottom: 2rem; }
+    .warn { color: #f59e0b; }
+    .danger { color: #ef4444; }
+  </style>
+</head>
+<body>
+  <div class="header-row">
+    <div>
+      <h1>⚡ Infra Insight</h1>
+      <div class="subtitle"><span class="status-dot"></span>Live szerver monitoring + AI elemzés</div>
+    </div>
+    <button class="refresh-btn" onclick="loadMetrics()">↻ Frissít</button>
+  </div>
 
-<html lang="en">
-	<head>
-		<meta charset="utf-8" />
-		<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-		<link rel="icon" href="/favicon.ico" />
-		<meta name="viewport" content="width=device-width" />
-		<meta name="generator" content={Astro.generator} />
-		<title>Astro</title>
-	</head>
-	<body>
-		<h1>Astro</h1>
-	</body>
+  <div class="grid">
+    <div class="card">
+      <div class="card-label">CPU</div>
+      <div><span class="card-value" id="cpu-val">—</span><span class="card-unit">%</span></div>
+      <div class="bar-bg"><div class="bar bar-cpu" id="cpu-bar" style="width:0%"></div></div>
+    </div>
+    <div class="card">
+      <div class="card-label">Memória</div>
+      <div><span class="card-value" id="mem-val">—</span><span class="card-unit">%</span></div>
+      <div class="bar-bg"><div class="bar bar-mem" id="mem-bar" style="width:0%"></div></div>
+    </div>
+    <div class="card">
+      <div class="card-label">Disk</div>
+      <div><span class="card-value" id="disk-val">—</span><span class="card-unit">%</span></div>
+      <div class="bar-bg"><div class="bar bar-disk" id="disk-bar" style="width:0%"></div></div>
+    </div>
+    <div class="card">
+      <div class="card-label">Uptime</div>
+      <div class="card-value" style="font-size:1.2rem" id="uptime-val">—</div>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-title">Hálózat</div>
+    <div class="net-row"><span class="net-label">Küldött</span><span id="net-sent">—</span></div>
+    <div class="net-row"><span class="net-label">Fogadott</span><span id="net-recv">—</span></div>
+    <div class="net-row"><span class="net-label">CPU magok</span><span id="cpu-count">—</span></div>
+    <div class="net-row"><span class="net-label">RAM összesen</span><span id="mem-total">—</span></div>
+    <div class="net-row"><span class="net-label">Disk összesen</span><span id="disk-total">—</span></div>
+  </div>
+
+  <div class="section">
+    <div class="section-title">AI Elemzés</div>
+    <button id="analyze-btn" onclick="analyze()">🤖 Elemezd a szerver állapotát</button>
+    <div class="analysis" id="analysis-box">Kattints az elemzés gombra a Qwen AI véleményéért...</div>
+  </div>
+
+  <script>
+    let lastMetrics = null;
+
+    function colorize(val, warn=70, danger=90) {
+      if (val >= danger) return 'danger';
+      if (val >= warn) return 'warn';
+      return '';
+    }
+
+    async function loadMetrics() {
+      try {
+        const r = await fetch('/api/metrics');
+        const d = await r.json();
+        lastMetrics = d;
+
+        const cpu = d.cpu.percent;
+        const mem = d.memory.percent;
+        const disk = d.disk.percent;
+
+        document.getElementById('cpu-val').textContent = cpu.toFixed(1);
+        document.getElementById('cpu-val').className = 'card-value ' + colorize(cpu);
+        document.getElementById('cpu-bar').style.width = cpu + '%';
+
+        document.getElementById('mem-val').textContent = mem.toFixed(1);
+        document.getElementById('mem-val').className = 'card-value ' + colorize(mem);
+        document.getElementById('mem-bar').style.width = mem + '%';
+
+        document.getElementById('disk-val').textContent = disk.toFixed(1);
+        document.getElementById('disk-val').className = 'card-value ' + colorize(disk, 80, 95);
+        document.getElementById('disk-bar').style.width = disk + '%';
+
+        document.getElementById('uptime-val').textContent = d.uptime;
+        document.getElementById('net-sent').textContent = d.network.bytes_sent_mb.toFixed(1) + ' MB';
+        document.getElementById('net-recv').textContent = d.network.bytes_recv_mb.toFixed(1) + ' MB';
+        document.getElementById('cpu-count').textContent = d.cpu.count + ' mag';
+        document.getElementById('mem-total').textContent = d.memory.total_gb + ' GB';
+        document.getElementById('disk-total').textContent = d.disk.total_gb + ' GB';
+      } catch(e) {
+        console.error(e);
+      }
+    }
+
+    async function analyze() {
+      if (!lastMetrics) await loadMetrics();
+      const btn = document.getElementById('analyze-btn');
+      const box = document.getElementById('analysis-box');
+      btn.disabled = true;
+      btn.textContent = '⏳ Elemzés folyamatban...';
+      box.textContent = '';
+      try {
+        const r = await fetch('/api/analyze', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({ metrics: lastMetrics })
+        });
+        const d = await r.json();
+        box.textContent = d.analysis;
+      } catch(e) {
+        box.textContent = 'Hiba: ' + e.message;
+      }
+      btn.disabled = false;
+      btn.textContent = '🤖 Elemezd a szerver állapotát';
+    }
+
+    loadMetrics();
+    setInterval(loadMetrics, 15000);
+  </script>
+</body>
 </html>
